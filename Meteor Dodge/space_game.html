@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script src="js/pixi.min.js"></script>
+    <script>
+        let app;
+
+        //player
+        let player;
+        let isOnGame;
+
+        //bullets
+        let bullets = [];
+        let bulletSpeed = 10;
+
+        //meteor
+        let intervalInMilliseconds = 5000;
+
+        //meteors
+        let meteors = [];
+        let meteorSpeed = 1;
+
+        //buttons
+        let keys = {};
+        let playButton;
+        let playAgainButton;
+        let quitButton;
+
+        //screens
+        let titleScreenImg;
+        let gameOverScreenImg;
+
+        //backgrounds
+        let bgSpaceStars;
+        let bgSpaceDust;
+        let bgY = 0;
+        let bgSpeed = 1;
+
+        //score
+        let score_text;
+        let score = 0;
+
+        //containers
+        let titleScreen;
+        let mainScreen;
+        let gameOverScreen;
+
+        window.onload = function() {
+            app = new PIXI.Application(
+                {
+                    width: 640,
+                    height: 800,
+                    backgroundColor: 0xAAAAAA
+                }  
+            );
+
+            titleScreen = new PIXI.Container();
+            mainScreen = new PIXI.Container();
+            gameOverScreen = new PIXI.Container();
+
+            mainScreen.visible = false;
+            gameOverScreen.visible = false;
+
+            app.stage.addChild(titleScreen);
+            app.stage.addChild(mainScreen);
+            app.stage.addChild(gameOverScreen);
+
+            document.querySelector("#gameDiv").appendChild(app.view);
+            mainScreen.interactive = true;
+            document.querySelector("#gameDiv").addEventListener("pointerdown", fireBullet);
+
+            app.loader.baseUrl = "images";
+            app.loader
+                .add("bgSpaceStars", "bg_space_stars.png")
+                .add("bgSpaceDust", "bg_space_dust.png")
+                .add("player", "player.png")
+                .add("playButton", "playButton.png")
+                .add("playAgainButton", "playAgainButton.png")
+                .add("quitButton", "quitButton.png")
+                .add("gameOverScreenImg", "gameOverScreen.png")
+                .add("titleScreenImg", "titleScreen.png");
+            app.loader.onComplete.add(initLevel);
+            app.loader.load();
+
+            //keyboard event handlers
+            window.addEventListener("keydown", keysDown);
+            window.addEventListener("keyup", keysUp);
+
+            app.ticker.add(gameLoop);
+        }
+
+        //Initialize**********************************************************************************************************
+
+        function initLevel(){
+            //background
+            bgSpaceStars = createBg(app.loader.resources["bgSpaceStars"].texture);
+            bgSpaceDust = createBg(app.loader.resources["bgSpaceDust"].texture);
+
+            //player
+            player = PIXI.Sprite.from(app.loader.resources.player.texture);
+            player.x = app.view.width / 2;
+            player.y = app.view.height / 2 + 200;
+            player.anchor.set(0.5);
+            mainScreen.addChild(player);
+
+            //titleScreenImg
+            titleScreenImg = PIXI.Sprite.from(app.loader.resources.titleScreenImg.texture);
+            titleScreenImg.x = app.view.width / 2;
+            titleScreenImg.y = app.view.height / 2 - 100;
+            titleScreenImg.anchor.set(0.5);
+            titleScreen.addChild(titleScreenImg);
+
+            //playButton
+            playButton = PIXI.Sprite.from(app.loader.resources.playButton.texture);
+            playButton.x = app.view.width / 2;
+            playButton.y = app.view.height / 2 + 100;
+            playButton.anchor.set(0.5);
+
+            playButton.buttonMode = true;
+            playButton.interactive = true;
+
+            playButton.on('mousedown', onPlay)
+
+            titleScreen.addChild(playButton);
+
+            //gameOverScreenImg
+            gameOverScreenImg = PIXI.Sprite.from(app.loader.resources.gameOverScreenImg.texture);
+            gameOverScreenImg.x = app.view.width / 2;
+            gameOverScreenImg.y = app.view.height / 2 - 100;
+            gameOverScreenImg.anchor.set(0.5);
+            gameOverScreen.addChild(gameOverScreenImg);
+
+            //playAgainButton
+            playAgainButton = PIXI.Sprite.from(app.loader.resources.playAgainButton.texture);
+            playAgainButton.x = app.view.width / 2 + 100;
+            playAgainButton.y = app.view.height / 2 + 100;
+            playAgainButton.anchor.set(0.5);
+
+            playAgainButton.buttonMode = true;
+            playAgainButton.interactive = true;
+
+            playAgainButton.on('mousedown', onPlay)
+
+            gameOverScreen.addChild(playAgainButton);
+
+            //quitButton
+            quitButton = PIXI.Sprite.from(app.loader.resources.quitButton.texture);
+            quitButton.x = app.view.width / 2 - 100;
+            quitButton.y = app.view.height / 2 + 100;
+            quitButton.anchor.set(0.5);
+
+            quitButton.buttonMode = true;
+            quitButton.interactive = true;
+
+            quitButton.on('mousedown', onQuit)
+
+            gameOverScreen.addChild(quitButton);
+
+            setInterval(initMeteor, 1500);
+
+            app.ticker.add(gameLoop);
+        }
+
+        function gameLoop() {
+            updateBg();
+            updateBullets();
+            updateMeteors();
+            updateCollision();
+            updateScore(score);
+
+            //Movements
+            // W
+            if(isOnGame){
+                if(keys["87"]) {
+                    player.y -= 5;
+                }
+                // A
+                if(keys["65"]) {
+                    player.x -= 5;
+                }
+                // S
+                if(keys["83"]) {
+                    player.y += 5;
+                }
+                // D
+                if(keys["68"]) {
+                    player.x += 5;
+                }
+            }
+        }
+
+        //ChangeContainer************************************************************************************************
+
+        function onPlay(){
+            isOnGame = true;
+
+            titleScreen.visible = false;
+            mainScreen.visible = true;
+            gameOverScreen.visible = false;
+        }
+
+        function onGameOver(){
+            isOnGame = false;
+            restart();
+
+            titleScreen.visible = false;
+            mainScreen.visible = false;
+            gameOverScreen.visible = true;
+        }
+
+        function onQuit(){
+            //should close the tab
+        }
+
+        //Background*****************************************************************************************************
+
+        function createBg(texture){
+            let tiling = new PIXI.TilingSprite(texture, 640, 800);
+            tiling.position.set(0,0);
+            mainScreen.addChild(tiling);
+
+            return tiling;
+        }
+
+        function updateBg(){
+            bgY = (bgY + bgSpeed);
+            bgSpaceDust.tilePosition.y = bgY;
+            bgSpaceStars.tilePosition.y = bgY / 2;
+        }
+
+        //Movements******************************************************************************************************
+        
+        function keysDown(e){
+            keys[e.keyCode] = true;
+        }
+
+        function keysUp(e){
+            keys[e.keyCode] = false;
+        }
+
+        //Bullet**********************************************************************************************************
+        function fireBullet(e){
+            let bullet = createBullet();
+            bullets.push(bullet);
+        }
+
+        function createBullet(){
+            let bullet = new PIXI.Sprite.from("images/bullet.png");
+            bullet.anchor.set(0.5);
+            bullet.x = player.x;
+            bullet.y = player.y;
+            bullet.speed = bulletSpeed;
+            mainScreen.addChild(bullet);
+
+            return bullet;
+        }
+
+        function updateBullets(){
+            
+            for(let i = 0; i < bullets.length; i++){
+                bullets[i].position.y -= bullets[i].speed;
+
+                if(bullets[i].position.y < 0){
+                    bullets[i].dead = true;
+                }
+            }
+
+            for(let i = 0; i < bullets.length; i++){
+                if(bullets[i].dead){
+                    mainScreen.removeChild(bullets[i]);
+                    bullets.splice(i,1);
+                }
+            }
+        }
+
+        //Meteor**********************************************************************************************************
+        function initMeteor(){
+            let meteor = createMeteor();
+            meteors.push(meteor);
+        }
+
+        function createMeteor(){
+            let meteor = new PIXI.Sprite.from("images/meteor.png");
+
+            let stageWidth = app.view.width;
+            let enemyWidth = meteor.width;
+
+            let randomXPosition = Math.floor(Math.random() * (stageWidth - enemyWidth)) + 1;
+
+            meteor.anchor.set(0.5);
+            meteor.x = randomXPosition;
+            meteor.y = 0;
+            meteor.speed = meteorSpeed;
+            mainScreen.addChild(meteor);
+
+            return meteor;
+        }
+
+        function updateMeteors(){
+            for(let i = 0; i < meteors.length; i++){
+                meteors[i].position.y += meteors[i].speed;
+                if(meteors[i].position.y < 0){
+                    meteors[i].dead = true;
+                }
+            }
+
+            for(let i = 0; i < meteors.length; i++){
+                if(meteors[i].dead){
+                    mainScreen.removeChild(meteors[i]);
+                    meteors.splice(i,1);
+                }
+            }
+        }
+
+        //Score**********************************************************************************************************
+
+        function getScore(text){
+            score_text = new PIXI.Text(score);
+            score_text.x = 50;
+            score_text.y = 50;
+            score_text.anchor.set(0.5);
+            score_text.style = new PIXI.TextStyle({
+                fill: 0xFFFFFF,
+                fontSize:40
+            });
+            return score_text;
+        }
+
+        function updateScore(text) {
+            mainScreen.removeChild(score_text);
+            score_text = getScore(text);
+            mainScreen.addChild(score_text);
+        }
+
+        //Restart***********************************************************************************************************
+
+        function restart() {
+            score = 0;
+
+            player.x = app.view.width / 2;
+            player.y = app.view.height / 2 + 200;
+
+            for(let i = 0; i < meteors.length; i++){
+                meteors[i].dead = true;
+            }
+
+            for(let i = 0; i < bullets.length; i++){
+                bullets[i].dead = true;
+            }
+        }
+
+        //Collider**********************************************************************************************************
+
+        function updateCollision(){
+            for(let i = 0; i < meteors.length; i++){
+
+                if(rectsIntersect(meteors[i], player)){
+                    onGameOver();
+                }
+
+                for(let j = 0; j < bullets.length; j++){
+                    if(rectsIntersect(meteors[i], bullets[j])){
+                        meteors[i].dead = true;
+                        score++;
+                    }
+                }
+            }
+        }
+
+        function rectsIntersect(a, b){
+            let aBox = a.getBounds();
+            let bBox = b.getBounds();
+
+            return aBox.x + aBox.width > bBox.x &&
+                    aBox.x < bBox.x + bBox.width && 
+                    aBox.y + aBox.height > bBox.y && 
+                    aBox.y < bBox.y + bBox.height;
+        }
+
+    </script>
+</head>
+<body>
+    <div id="gameDiv"></div>
+</body>
+</html>
